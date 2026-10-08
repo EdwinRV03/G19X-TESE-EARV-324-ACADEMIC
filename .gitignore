@@ -1,0 +1,59 @@
+
+# ==================================
+# VARIABLES DE ENTORNO Y CREDENCIALES
+# ==================================
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# ======================
+# PYTHON / FASTAPI
+# ======================
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ======================
+# REACT / VITE
+# ======================
+node_modules/
+dist/
+.vite/
+coverage/
+*.local
+
+# ======================
+# ARCHIVOS DEL EDITOR
+# ======================
+.vscode/
+.idea/
+
+# ======================
+# SISTEMA OPERATIVO
+# ======================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ======================
+# ARCHIVOS TEMPORALES
+# ======================
+*.log
+*.tmp
+*.bak
+*.swp
+
+# ======================
+# BASES DE DATOS Y RESPALDOS
+# ======================
+*.sql
+*.dump
+*.backup
+pgdata/
+backups/
