@@ -101,23 +101,115 @@ La configuración utiliza variables como:
 
 No deben publicarse claves reales ni contraseñas en el repositorio.
 
-## 10. Ejecución en desarrollo
+## 10. Instalación y ejecución del sistema
 
-Desde la carpeta principal del proyecto, iniciar PostgreSQL mediante Docker Compose:
+### 10.1. Requisitos previos
 
-`docker compose up -d`
+Antes de instalar el sistema, es necesario contar con:
 
-Posteriormente, iniciar el backend FastAPI desde su carpeta correspondiente:
+- Python 3.11.
+- Node.js y npm.
+- Docker Desktop con Docker Compose.
+- Git.
+- Una clave API válida de Groq.
 
-`python -m uvicorn main:app --reload --port 8001`
+### 10.2. Clonar el repositorio
 
-Finalmente, iniciar el frontend React desde la carpeta `frontend`:
+Abrir una terminal y ejecutar:
 
-`npm install`
+```bash
+git clone https://github.com/EdwinRV03/G19X-TESE-EARV-324-ACADEMIC.git
+cd G19X-TESE-EARV-324-ACADEMIC
+```
 
-`npm run dev`
+### 10.3. Configurar las variables de entorno
 
-Antes de ejecutar los servicios es necesario instalar las dependencias correspondientes y configurar las variables de entorno.
+En la carpeta principal del proyecto, crear una copia del archivo `.env.example` y nombrarla `.env`.
+
+Configurar los valores correspondientes a:
+
+- `GROQ_API_KEY`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_DB`
+- `DATABASE_URL`
+
+La contraseña establecida en `POSTGRES_PASSWORD` debe coincidir con la contraseña utilizada en `DATABASE_URL`.
+
+Las credenciales reales deben mantenerse exclusivamente en el archivo `.env`, que está excluido del repositorio mediante `.gitignore`.
+
+### 10.4. Iniciar PostgreSQL con Docker
+
+Desde la carpeta principal del proyecto, ejecutar:
+
+```bash
+docker compose up -d
+```
+
+Este comando inicia PostgreSQL 16 mediante Docker Compose. La base de datos utiliza un volumen persistente para conservar la información entre reinicios.
+
+Para comprobar el estado del contenedor:
+
+```bash
+docker ps
+```
+
+Debe aparecer el contenedor `postgres_legal_db` en ejecución.
+
+### 10.5. Preparar el backend
+
+Desde la carpeta principal del proyecto, ejecutar los siguientes comandos en PowerShell:
+
+```powershell
+cd backend
+py -3.11 -m venv venv
+.\venv\Scripts\python.exe -m pip install -r ..\requirements.txt
+```
+
+El archivo `requirements.txt` contiene las dependencias necesarias para FastAPI, PostgreSQL, Groq y la generación de documentos PDF y Word.
+
+### 10.6. Ejecutar el backend
+
+Dentro de la carpeta `backend`, ejecutar:
+
+```powershell
+.\venv\Scripts\python.exe -m uvicorn main:app --reload --port 8001
+```
+
+Una vez iniciado el servidor, la documentación interactiva de la API estará disponible en:
+
+`http://127.0.0.1:8001/docs`
+
+### 10.7. Preparar y ejecutar el frontend
+
+Abrir otra terminal y acceder a la carpeta `frontend`:
+
+```powershell
+cd frontend
+npm ci
+npm run dev
+```
+
+El servidor de Vite mostrará en la terminal la dirección local desde la cual se puede acceder a la aplicación.
+
+### 10.8. Verificación del funcionamiento
+
+Con PostgreSQL, FastAPI y React en ejecución, comprobar:
+
+1. Que se carguen las cinco plantillas disponibles.
+2. Que puedan capturarse los datos del documento.
+3. Que Groq genere un borrador.
+4. Que el contenido pueda editarse.
+5. Que el documento pueda guardarse en PostgreSQL.
+6. Que aparezca en el historial.
+7. Que pueda exportarse a PDF y Word.
+8. Que la información permanezca disponible después de reiniciar el contenedor.
+
+### 10.9. Consideraciones
+
+El sistema utiliza una configuración de desarrollo local. Para desplegarlo en un entorno empresarial accesible por red es necesario incorporar medidas adicionales de autenticación, autorización, seguridad y administración de secretos.
+
+Los documentos generados mediante inteligencia artificial deben revisarse antes de su utilización formal.
 
 ## 11. Flujo de funcionamiento
 
