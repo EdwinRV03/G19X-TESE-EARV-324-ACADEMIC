@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { FileText, LockKeyhole, Mail, Loader2 } from 'lucide-react';
 import { iniciarSesion } from './api';
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, onRecuperarContrasena }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -15,7 +15,6 @@ export default function Login({ onLogin }) {
 
     try {
       const respuesta = await iniciarSesion(email.trim(), password);
-
       await onLogin(respuesta.data);
     } catch (err) {
       if (err.response?.status === 401) {
@@ -111,6 +110,14 @@ export default function Login({ onLogin }) {
             )}
           </button>
         </form>
+
+        <button
+          type="button"
+          onClick={onRecuperarContrasena}
+          className="w-full text-center text-sm text-sky-400 hover:text-sky-300 mt-5 cursor-pointer"
+        >
+          ¿Olvidaste tu contraseña?
+        </button>
 
         <p className="text-center text-xs text-slate-500 mt-8">
           Acceso exclusivo para usuarios autorizados

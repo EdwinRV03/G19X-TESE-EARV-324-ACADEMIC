@@ -43,3 +43,24 @@ class Usuario(Base):
     rol = Column(String(50), nullable=True)
     activo = Column(Boolean, nullable=False, default=True)
     documentos = relationship("DocumentoGenerado", back_populates="usuario")
+
+class TokenRecuperacion(Base):
+    __tablename__ = "tokens_recuperacion"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    usuario_id = Column(
+        Integer,
+        ForeignKey("usuarios.id"),
+        nullable=False
+    )
+
+    token_hash = Column(String(64), nullable=False, unique=True)
+
+    fecha_expiracion = Column(DateTime, nullable=False)
+
+    utilizado = Column(
+        Boolean,
+        nullable=False,
+        default=False
+    )

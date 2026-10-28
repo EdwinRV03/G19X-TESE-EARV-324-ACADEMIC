@@ -13,7 +13,14 @@ from app.security import (
     verificar_token_acceso,
     generar_hash_password
 )
-
+from app.services_email import enviar_correo
+from app.services_recuperacion import (
+    generar_token_recuperacion,
+    calcular_hash_token,
+    token_esta_vigente
+)
+from app.models import TokenRecuperacion
+from datetime import datetime, timedelta, timezone
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -34,6 +41,13 @@ class SolicitudEditarUsuario(BaseModel):
 
 class SolicitudCambiarPassword(BaseModel):
     password_actual: str
+    password_nueva: str
+
+class SolicitudRecuperacion(BaseModel):
+    email: EmailStr
+
+class SolicitudRestablecerPassword(BaseModel):
+    token: str
     password_nueva: str
 
 def obtener_usuario_actual(
@@ -393,4 +407,147 @@ def cambiar_password(
 
     return {
         "mensaje": "Contraseña actualizada correctamente"
+    }
+
+@router.post("/solicitar-recuperacion")
+def solicitar_recuperacion(
+    datos: SolicitudRecuperacion,
+    db: Session = Depends(get_db)
+):
+    mensaje_generico = {
+        "mensaje": "Si el correo está registrado y activo, recibirás instrucciones de recuperación."
+    }
+
+    email = str(datos.email).strip().lower()
+
+    usuario = db.query(Usuario).filter(
+        Usuario.email == email,
+        Usuario.activo.is_(True)
+    ).first()
+
+    if usuario is None:
+        return mensaje_generico
+
+    ahora = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    ultimo_token = (
+        db.query(TokenRecuperacion)
+        .filter(TokenRecuperacion.usuario_id == usuario.id)
+        .order_by(TokenRecuperacion.id.desc())
+        .first()
+    )
+
+    if ultimo_token is not None:
+        fecha_creacion_aproximada = (
+            ultimo_token.fecha_expiracion - timedelta(minutes=15)
+        )
+
+        if ahora - fecha_creacion_aproximada < timedelta(seconds=60):
+            return mensaje_generico
+
+    token, token_hash, expiracion = generar_token_recuperacion()
+
+    registro = TokenRecuperacion(
+        usuario_id=usuario.id,
+        token_hash=token_hash,
+        fecha_expiracion=expiracion,
+        utilizado=False
+    )
+
+    db.add(registro)
+    db.commit()
+
+    enlace = (
+        "http://localhost:5173/"
+        f"?recuperar_token={token}"
+    )
+
+    try:
+        enviar_correo(
+            destinatario=usuario.email,
+            asunto="Recuperación de contraseña - Sistema de Notificaciones Legales",
+            contenido=(
+                "Recibimos una solicitud para restablecer tu contraseña.\n\n"
+                f"Abre el siguiente enlace:\n{enlace}\n\n"
+                "El enlace vence en 15 minutos y solo puede utilizarse una vez.\n\n"
+                "Si no solicitaste este cambio, ignora este mensaje."
+            )
+        )
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible procesar la solicitud en este momento."
+        )
+
+    return mensaje_generico
+
+@router.post("/restablecer-password")
+def restablecer_password(
+    datos: SolicitudRestablecerPassword,
+    db: Session = Depends(get_db)
+):
+    error_token = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="El enlace es inválido, ya fue utilizado o ha expirado"
+    )
+
+    if not datos.token or len(datos.token) > 256:
+        raise error_token
+
+    if not 8 <= len(datos.password_nueva) <= 128:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="La contraseña debe tener entre 8 y 128 caracteres"
+        )
+
+    token_hash = calcular_hash_token(datos.token)
+
+    try:
+        registro = (
+            db.query(TokenRecuperacion)
+            .filter(TokenRecuperacion.token_hash == token_hash)
+            .with_for_update()
+            .first()
+        )
+
+        if (
+            registro is None
+            or registro.utilizado
+            or not token_esta_vigente(registro.fecha_expiracion)
+        ):
+            raise error_token
+
+        usuario = (
+            db.query(Usuario)
+            .filter(Usuario.id == registro.usuario_id)
+            .first()
+        )
+
+        if usuario is None or not usuario.activo:
+            raise error_token
+
+        if verificar_password(
+            datos.password_nueva,
+            usuario.password_hash
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="La nueva contraseña debe ser diferente de la actual"
+            )
+
+        usuario.password_hash = generar_hash_password(
+            datos.password_nueva
+        )
+
+        registro.utilizado = True
+
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+    return {
+        "mensaje": "Contraseña restablecida correctamente"
     }

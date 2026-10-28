@@ -54,4 +54,13 @@ export const cambiarPassword = (passwordActual, passwordNueva) =>
     password_nueva: passwordNueva
   });
 
+export const solicitarRecuperacion = (email) =>
+  API.post('/auth/solicitar-recuperacion', { email });
+
+export const restablecerPassword = (token, passwordNueva) =>
+  API.post('/auth/restablecer-password', {
+    token,
+    password_nueva: passwordNueva
+  });
+
 export default API;

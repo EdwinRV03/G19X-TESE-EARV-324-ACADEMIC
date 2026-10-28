@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import API, { getPlantillas, redactarBorrador, guardarDocumento, getDocumentos } from './api';
 import { FileText, Download, Sparkles, History, PlusCircle, AlertCircle, Loader2, Save, Building2, User, ShieldCheck, Image as ImageIcon } from 'lucide-react';
 import Login from './Login';
+import RecuperarContrasena from './RecuperarContrasena';
 import { establecerToken, obtenerMiPerfil } from './api';
 import Usuarios from './Usuarios';
 import MiCuenta from './MiCuenta';
@@ -513,6 +514,19 @@ function Dashboard({ usuario, onCerrarSesion }) {
 
 export default function App() {
   const [usuarioActual, setUsuarioActual] = useState(null);
+  const [recuperacion, setRecuperacion] = useState(() => {
+    const token = new URLSearchParams(window.location.search).get('recuperar_token');
+    return token !== null ? { token } : null;
+  });
+
+  const abrirRecuperacion = () => setRecuperacion({ token: '' });
+
+  const volverAlLogin = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('recuperar_token');
+    window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+    setRecuperacion(null);
+  };
 
   const manejarLogin = async (datosLogin) => {
     establecerToken(datosLogin.access_token);
@@ -532,8 +546,22 @@ export default function App() {
     setUsuarioActual(null);
   };
 
+  if (recuperacion !== null) {
+    return (
+      <RecuperarContrasena
+        token={recuperacion.token}
+        onVolver={volverAlLogin}
+      />
+    );
+  }
+
   if (!usuarioActual) {
-    return <Login onLogin={manejarLogin} />;
+    return (
+      <Login
+        onLogin={manejarLogin}
+        onRecuperarContrasena={abrirRecuperacion}
+      />
+    );
   }
 
   return (
