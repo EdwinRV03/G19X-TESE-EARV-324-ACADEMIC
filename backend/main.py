@@ -7,19 +7,21 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 
+from app.auth import router as auth_router
+from app.auth import obtener_usuario_actual
 from app.database import engine, Base, get_db
-from app.models import Plantilla, DocumentoGenerado
+from app.models import Plantilla, DocumentoGenerado, Usuario
 from app.services_ai import generar_redaccion_legal
 from app.services_export import exportar_a_pdf, exportar_a_docx
 
-# Crear tablas en PostgreSQL
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Sistema de Notificaciones Legales")
+app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,16 +37,14 @@ class SolicitudGuardar(BaseModel):
     datos_variables: Dict[str, Any]
 
 
-@app.get("/plantillas/")
+@app.get("/plantillas/", dependencies=[Depends(obtener_usuario_actual)])
 def listar_plantillas(db: Session = Depends(get_db)):
     try:
-        # 1. Eliminar la versión antigua duplicada sin tildes si existe
         duplicado_antiguo = db.query(Plantilla).filter(Plantilla.titulo == "Notificacion de Rescision Laboral").first()
         if duplicado_antiguo:
             db.delete(duplicado_antiguo)
             db.commit()
 
-        # 2. Catálogo oficial de las 5 plantillas base
         plantillas_catalog = [
             {
                 "titulo": "Notificación de Rescisión Laboral",
@@ -68,7 +68,6 @@ def listar_plantillas(db: Session = Depends(get_db)):
             }
         ]
 
-        # 3. Sincronizar e insertar cualquier plantilla faltante
         for p_data in plantillas_catalog:
             existe = db.query(Plantilla).filter(Plantilla.titulo == p_data["titulo"]).first()
             if not existe:
@@ -77,10 +76,8 @@ def listar_plantillas(db: Session = Depends(get_db)):
                     cuerpo_base=p_data["cuerpo_base"]
                 )
                 db.add(nueva_plantilla)
-        
-        db.commit()
 
-        # Retornar las plantillas ordenadas por ID
+        db.commit()
         return db.query(Plantilla).order_by(Plantilla.id.asc()).all()
 
     except Exception as e:
@@ -88,12 +85,12 @@ def listar_plantillas(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error al listar plantillas: {str(e)}")
 
 
-@app.post("/documentos/redactar-borrador/")
+@app.post("/documentos/redactar-borrador/", dependencies=[Depends(obtener_usuario_actual)])
 def redactar_borrador(solicitud: SolicitudBorrador, db: Session = Depends(get_db)):
     plantilla = db.query(Plantilla).filter(Plantilla.id == solicitud.plantilla_id).first()
     if not plantilla:
         raise HTTPException(status_code=404, detail="Plantilla no encontrada")
-    
+
     try:
         contenido = generar_redaccion_legal(plantilla.cuerpo_base, solicitud.datos_variables)
         return {"status": "borrador_generado", "contenido_generado": contenido}
@@ -101,17 +98,30 @@ def redactar_borrador(solicitud: SolicitudBorrador, db: Session = Depends(get_db
         raise HTTPException(status_code=500, detail=f"Error al generar borrador con IA: {str(e)}")
 
 
+
 @app.post("/documentos/guardar/")
-def guardar_documento(solicitud: SolicitudGuardar, db: Session = Depends(get_db)):
-    plantilla = db.query(Plantilla).filter(Plantilla.id == solicitud.plantilla_id).first()
+def guardar_documento(
+    solicitud: SolicitudGuardar,
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+    db: Session = Depends(get_db)
+):
+    plantilla = db.query(Plantilla).filter(
+        Plantilla.id == solicitud.plantilla_id
+    ).first()
+
     if not plantilla:
-        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+        raise HTTPException(
+            status_code=404,
+            detail="Plantilla no encontrada"
+        )
 
     doc = DocumentoGenerado(
         plantilla_id=plantilla.id,
+        usuario_id=usuario_actual.id,
         contenido=solicitud.contenido,
         estado="confirmado"
     )
+
     db.add(doc)
     db.commit()
     db.refresh(doc)
@@ -123,10 +133,25 @@ def guardar_documento(solicitud: SolicitudGuardar, db: Session = Depends(get_db)
     }
 
 
+
 @app.get("/documentos/")
-def listar_documentos(db: Session = Depends(get_db)):
-    docs = db.query(DocumentoGenerado).order_by(DocumentoGenerado.id.desc()).all()
+def listar_documentos(
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+    db: Session = Depends(get_db)
+):
+    consulta = db.query(DocumentoGenerado)
+
+    if usuario_actual.rol != "admin":
+        consulta = consulta.filter(
+            DocumentoGenerado.usuario_id == usuario_actual.id
+        )
+
+    docs = consulta.order_by(
+        DocumentoGenerado.id.desc()
+    ).all()
+
     resultado = []
+
     for d in docs:
         resultado.append({
             "documento_id": d.id,
@@ -136,27 +161,35 @@ def listar_documentos(db: Session = Depends(get_db)):
             "version": d.version,
             "contenido": d.contenido
         })
+
     return resultado
 
 
 @app.post("/documentos/{documento_id}/exportar/pdf")
 async def exportar_pdf_con_logo(
-    documento_id: int, 
+    documento_id: int,
     logo_pos: str = Form("ninguno"),
     file: Optional[UploadFile] = File(None),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
     db: Session = Depends(get_db)
 ):
     doc = db.query(DocumentoGenerado).filter(DocumentoGenerado.id == documento_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
-        
+
+    if usuario_actual.rol != "admin" and doc.usuario_id != usuario_actual.id:
+        raise HTTPException(
+            status_code=404,
+            detail="Documento no encontrado"
+        )
+
     try:
         logo_bytes = await file.read() if file else None
         pdf_bytes = exportar_a_pdf(doc.contenido, logo_bytes=logo_bytes, logo_pos=logo_pos)
-        
+
         return Response(
-            content=pdf_bytes, 
-            media_type="application/pdf", 
+            content=pdf_bytes,
+            media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename=notificacion_{documento_id}.pdf"}
         )
     except Exception as e:
@@ -167,22 +200,29 @@ async def exportar_pdf_con_logo(
 
 @app.post("/documentos/{documento_id}/exportar/docx")
 async def exportar_docx_con_logo(
-    documento_id: int, 
+    documento_id: int,
     logo_pos: str = Form("ninguno"),
     file: Optional[UploadFile] = File(None),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
     db: Session = Depends(get_db)
 ):
     doc = db.query(DocumentoGenerado).filter(DocumentoGenerado.id == documento_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
-        
+
+    if usuario_actual.rol != "admin" and doc.usuario_id != usuario_actual.id:
+        raise HTTPException(
+            status_code=404,
+            detail="Documento no encontrado"
+        )
+
     try:
         logo_bytes = await file.read() if file else None
         docx_bytes = exportar_a_docx(doc.contenido, logo_bytes=logo_bytes, logo_pos=logo_pos)
-        
+
         return Response(
-            content=docx_bytes, 
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             headers={"Content-Disposition": f"attachment; filename=notificacion_{documento_id}.docx"}
         )
     except Exception as e:

@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import API, { getPlantillas, redactarBorrador, guardarDocumento, getDocumentos } from './api';
 import { FileText, Download, Sparkles, History, PlusCircle, AlertCircle, Loader2, Save, Building2, User, ShieldCheck, Image as ImageIcon } from 'lucide-react';
+import Login from './Login';
+import { establecerToken, obtenerMiPerfil } from './api';
+import Usuarios from './Usuarios';
+import MiCuenta from './MiCuenta';
 
-export default function App() {
+function Dashboard({ usuario, onCerrarSesion }) {
   const [plantillas, setPlantillas] = useState([]);
   const [documentos, setDocumentos] = useState([]);
   const [plantillaSeleccionada, setPlantillaSeleccionada] = useState(null);
@@ -147,7 +151,14 @@ export default function App() {
             </div>
           </div>
 
-          <nav className="flex gap-2">
+          <nav className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onCerrarSesion}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-rose-300 hover:bg-rose-500/10 border border-rose-500/30 cursor-pointer"
+            >
+              Cerrar sesión
+            </button>
             <button
               onClick={() => setVistaActiva('generar')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all cursor-pointer ${
@@ -164,12 +175,41 @@ export default function App() {
             >
               <History className="w-4 h-4" /> Historial ({documentos.length})
             </button>
+            {usuario?.rol === 'admin' && (
+              <button
+                type="button"
+                onClick={() => setVistaActiva('usuarios')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all cursor-pointer ${
+                  vistaActiva === 'usuarios'
+                  ? 'bg-sky-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                }`}
+              >
+                <User className="w-4 h-4" />
+                Usuarios
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setVistaActiva('mi-cuenta')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all cursor-pointer ${
+                vistaActiva === 'mi-cuenta'
+                  ? 'bg-sky-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+              }`}
+            >
+              <User className="w-4 h-4" /> Mi cuenta
+            </button>
           </nav>
         </div>
       </header>
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-6">
-        {vistaActiva === 'generar' ? (
+        {vistaActiva === 'mi-cuenta' ? (
+          <MiCuenta usuario={usuario} onCerrarSesion={onCerrarSesion} />
+        ) : vistaActiva === 'usuarios' && usuario?.rol === 'admin' ? (
+          <Usuarios />
+        ) : vistaActiva === 'generar' ? (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             <div className="lg:col-span-5 bg-slate-800/50 border border-slate-700/60 rounded-2xl p-6 shadow-xl backdrop-blur-sm max-h-[80vh] overflow-y-auto space-y-4">
               <h2 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
@@ -467,5 +507,39 @@ export default function App() {
         )}
       </main>
     </div>
+  );
+}
+
+
+export default function App() {
+  const [usuarioActual, setUsuarioActual] = useState(null);
+
+  const manejarLogin = async (datosLogin) => {
+    establecerToken(datosLogin.access_token);
+
+    try {
+      const respuesta = await obtenerMiPerfil();
+      setUsuarioActual(respuesta.data);
+    } catch (error) {
+      establecerToken(null);
+      setUsuarioActual(null);
+      throw error;
+    }
+  };
+
+  const cerrarSesion = () => {
+    establecerToken(null);
+    setUsuarioActual(null);
+  };
+
+  if (!usuarioActual) {
+    return <Login onLogin={manejarLogin} />;
+  }
+
+  return (
+    <Dashboard
+      usuario={usuarioActual}
+      onCerrarSesion={cerrarSesion}
+    />
   );
 }
