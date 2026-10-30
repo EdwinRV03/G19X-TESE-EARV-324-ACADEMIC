@@ -1,7 +1,9 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
+
 
 class Plantilla(Base):
     __tablename__ = "plantillas"
@@ -25,6 +27,7 @@ class DocumentoGenerado(Base):
         nullable=True
     )
     contenido = Column(Text, nullable=False)
+    datos_variables = Column(JSONB, nullable=True)
     estado = Column(String(50), default="confirmado")
     version = Column(Integer, default=1)
     fecha_creacion = Column(DateTime, default=datetime.utcnow)
@@ -63,4 +66,27 @@ class TokenRecuperacion(Base):
         Boolean,
         nullable=False,
         default=False
+    )
+
+class VersionDocumento(Base):
+    __tablename__ = "versiones_documentos"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    documento_id = Column(
+        Integer,
+        ForeignKey("documentos_generados.id"),
+        nullable=False
+    )
+
+    version = Column(Integer, nullable=False)
+
+    contenido = Column(Text, nullable=False)
+
+    datos_variables = Column(JSONB, nullable=True)
+
+    fecha_version = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
     )

@@ -36,6 +36,12 @@ export const guardarDocumento = (data) =>
 export const getDocumentos = () =>
   API.get('/documentos/');
 
+export const editarDocumento = (documentoId, datos) =>
+  API.put(`/documentos/${documentoId}/editar`, datos);
+
+export const obtenerVersionesDocumento = (documentoId) =>
+  API.get(`/documentos/${documentoId}/versiones`);
+
 export const listarUsuarios = () =>
   API.get('/auth/usuarios');
 

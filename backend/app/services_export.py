@@ -11,8 +11,8 @@ from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 def extraer_nombres(contenido: str):
-    firmante = "FIRMANTE AUTORIZADO"
-    empleado = "EMPLEADO / DESTINATARIO"
+    firmante = "Firmante Autorizado"
+    empleado = "Empleado / Destinatario"
     
     lineas = [l.strip() for l in contenido.split('\n') if l.strip()]
     
@@ -30,13 +30,13 @@ def extraer_nombres(contenido: str):
             break
             
     # Patrón B: "empleado(a) Nombre", "empleado Nombre" (Común en Actas Administrativas)
-    if empleado == "EMPLEADO / DESTINATARIO":
+    if empleado == "Empleado / Destinatario":
         match = re.search(r'empleado\(a\)\s+([A-ZÁÉÍÓÚÑa-záéíóúñ\s]+?)(?=\.|\,|$)', contenido)
         if match:
             empleado = match.group(1).strip()
 
     # Patrón C: "C. Nombre" (Común en Cartas de Recomendación y NDA)
-    if empleado == "EMPLEADO / DESTINATARIO":
+    if empleado == "Empleado / Destinatario":
         match = re.search(r'\bC\.\s+([A-ZÁÉÍÓÚÑa-záéíóúñ\s]+?)(?=\s+laboró|\s+con|\.|\,|$)', contenido)
         if match:
             empleado = match.group(1).strip()

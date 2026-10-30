@@ -1,17 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import API, { getPlantillas, redactarBorrador, guardarDocumento, getDocumentos } from './api';
-import { FileText, Download, Sparkles, History, PlusCircle, AlertCircle, Loader2, Save, Building2, User, ShieldCheck, Image as ImageIcon } from 'lucide-react';
 import Login from './Login';
 import RecuperarContrasena from './RecuperarContrasena';
 import { establecerToken, obtenerMiPerfil } from './api';
 import Usuarios from './Usuarios';
 import MiCuenta from './MiCuenta';
+import API, {
+  getPlantillas,
+  redactarBorrador,
+  guardarDocumento,
+  getDocumentos,
+  editarDocumento,
+  obtenerVersionesDocumento
+} from './api';
+import {
+  FileText,
+  Download,
+  Sparkles,
+  History,
+  PlusCircle,
+  AlertCircle,
+  Loader2,
+  Save,
+  Building2,
+  User,
+  ShieldCheck,
+  Pencil,
+  Eye,
+  X,
+  Image as ImageIcon
+} from 'lucide-react';
 
 function Dashboard({ usuario, onCerrarSesion }) {
   const [plantillas, setPlantillas] = useState([]);
   const [documentos, setDocumentos] = useState([]);
   const [plantillaSeleccionada, setPlantillaSeleccionada] = useState(null);
-  
+
   // Manejo de Logo y Posición
   const [archivoLogo, setArchivoLogo] = useState(null);
   const [posicionLogo, setPosicionLogo] = useState('ninguno');
@@ -29,16 +52,39 @@ function Dashboard({ usuario, onCerrarSesion }) {
   const [cargandoBorrador, setCargandoBorrador] = useState(false);
   const [cargandoGuardar, setCargandoGuardar] = useState(false);
   const [descargando, setDescargando] = useState(false);
-  
+
   const [borradorGenerado, setBorradorGenerado] = useState(null);
   const [docGuardado, setDocGuardado] = useState(null);
-  
+
   const [error, setError] = useState(null);
   const [vistaActiva, setVistaActiva] = useState('generar');
+  const [busquedaHistorial, setBusquedaHistorial] = useState('');
+  const [filtroPlantillaHistorial, setFiltroPlantillaHistorial] = useState('');
+  const [documentoEditando, setDocumentoEditando] = useState(null);
+  const [contenidoEditado, setContenidoEditado] = useState('');
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+  const [versionesDocumento, setVersionesDocumento] = useState(null);
+  const [cargandoVersiones, setCargandoVersiones] = useState(false);
 
   useEffect(() => {
     cargarDatosIniciales();
   }, []);
+
+const documentosFiltrados = documentos.filter((doc) => {
+  const nombreEmpleado = String(
+    doc.datos_variables?.nombre_empleado || ''
+  ).toLowerCase();
+
+  const coincideBusqueda = nombreEmpleado.includes(
+    busquedaHistorial.trim().toLowerCase()
+  );
+
+  const coincidePlantilla =
+    !filtroPlantillaHistorial ||
+    String(doc.plantilla_id) === filtroPlantillaHistorial;
+
+  return coincideBusqueda && coincidePlantilla;
+});
 
   const cargarDatosIniciales = async () => {
     try {
@@ -98,7 +144,7 @@ function Dashboard({ usuario, onCerrarSesion }) {
       };
       const res = await guardarDocumento(payload);
       setDocGuardado(res.data);
-      
+
       const resDocs = await getDocumentos();
       setDocumentos(Array.isArray(resDocs.data) ? resDocs.data : []);
     } catch (err) {
@@ -137,6 +183,94 @@ function Dashboard({ usuario, onCerrarSesion }) {
       setDescargando(false);
     }
   };
+
+
+const abrirEditorDocumento = (documento) => {
+  setDocumentoEditando(documento);
+  setContenidoEditado(documento.contenido || '');
+  setVersionesDocumento(null);
+  setError(null);
+};
+
+const guardarEdicionDocumento = async () => {
+  if (!documentoEditando || guardandoEdicion) return;
+
+  if (!contenidoEditado.trim()) {
+    setError('El contenido del documento no puede estar vacío.');
+    return;
+  }
+
+  setGuardandoEdicion(true);
+  setError(null);
+
+  try {
+    const respuesta = await editarDocumento(
+      documentoEditando.documento_id,
+      {
+        contenido: contenidoEditado,
+        datos_variables: documentoEditando.datos_variables ?? null,
+        version_actual: documentoEditando.version
+      }
+    );
+
+    const resDocs = await getDocumentos();
+    setDocumentos(Array.isArray(resDocs.data) ? resDocs.data : []);
+
+    setDocumentoEditando(null);
+    setContenidoEditado('');
+    setVersionesDocumento(null);
+
+    alert(
+      `Documento actualizado correctamente. Versión ${respuesta.data.version}`
+    );
+
+  } catch (err) {
+
+    if (err.response?.status === 409) {
+      setError(
+        'Este documento fue modificado anteriormente. Actualiza el historial antes de volver a editar.'
+      );
+    } else if (err.response?.status === 403) {
+      setError('No tienes permiso para modificar este documento.');
+    } else if (err.response?.status === 404) {
+      setError('El documento ya no existe.');
+    } else {
+      setError('No fue posible guardar los cambios del documento.');
+    }
+  } finally {
+    setGuardandoEdicion(false);
+  }
+};
+
+const consultarVersionesDocumento = async (documento) => {
+  setCargandoVersiones(true);
+  setVersionesDocumento(null);
+  setDocumentoEditando(null);
+  setError(null);
+
+  try {
+    const respuesta = await obtenerVersionesDocumento(
+      documento.documento_id
+    );
+
+    setVersionesDocumento({
+      documento_id: documento.documento_id,
+      titulo: documento.titulo_plantilla,
+      versiones: respuesta.data.versiones || []
+    });
+
+  } catch (err) {
+    if (err.response?.status === 403) {
+      setError('No tienes permiso para consultar las versiones.');
+    } else if (err.response?.status === 404) {
+      setError('El documento no fue encontrado.');
+    } else {
+      setError('No fue posible consultar las versiones del documento.');
+    }
+  } finally {
+    setCargandoVersiones(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
@@ -371,7 +505,7 @@ function Dashboard({ usuario, onCerrarSesion }) {
 
             <div className="lg:col-span-7 flex flex-col">
               <div className="bg-slate-800/50 border border-slate-700/60 rounded-2xl p-6 flex-1 flex flex-col shadow-xl backdrop-blur-sm">
-                
+
                 <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-700/60">
                   <h2 className="text-lg font-semibold text-white flex items-center gap-2">
                     <FileText className="w-5 h-5 text-sky-400" />
@@ -462,7 +596,174 @@ function Dashboard({ usuario, onCerrarSesion }) {
               <History className="w-5 h-5 text-sky-400" />
               Historial de Documentos Guardados
             </h2>
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+  <div>
+    <label className="block text-xs font-semibold text-slate-400 mb-2">
+      Buscar por nombre del empleado
+    </label>
 
+    <input
+      type="text"
+      value={busquedaHistorial}
+      onChange={(e) => setBusquedaHistorial(e.target.value)}
+      placeholder="Escribe el nombre del empleado..."
+      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-sky-500"
+    />
+  </div>
+
+  <div>
+    <label className="block text-xs font-semibold text-slate-400 mb-2">
+      Filtrar por plantilla
+    </label>
+
+    <select
+      value={filtroPlantillaHistorial}
+      onChange={(e) => setFiltroPlantillaHistorial(e.target.value)}
+      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500"
+    >
+      <option value="">Todas las plantillas</option>
+
+      {plantillas.map((plantilla) => (
+        <option key={plantilla.id} value={String(plantilla.id)}>
+          {plantilla.titulo}
+        </option>
+      ))}
+    </select>
+  </div>
+</div>
+{versionesDocumento && (
+  <div className="mb-6 bg-slate-900 border border-violet-500/40 rounded-xl p-5">
+    <div className="flex justify-between items-start gap-4 mb-5">
+      <div>
+        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+          <History className="w-5 h-5 text-violet-400" />
+          Historial de versiones #{versionesDocumento.documento_id}
+        </h3>
+
+        <p className="text-sm text-slate-400 mt-1">
+          {versionesDocumento.titulo}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setVersionesDocumento(null)}
+        className="text-slate-400 hover:text-white p-2"
+        title="Cerrar historial de versiones"
+      >
+        <X className="w-5 h-5" />
+      </button>
+    </div>
+
+    <div className="space-y-4">
+      {versionesDocumento.versiones.map((version) => (
+        <div
+          key={version.version}
+          className="bg-slate-950 border border-slate-700 rounded-xl p-4"
+        >
+          <div className="flex justify-between items-center mb-3">
+            <span className="font-semibold text-slate-200">
+              Versión {version.version}
+            </span>
+
+            {version.actual && (
+              <span className="px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full text-xs">
+                Versión actual
+              </span>
+            )}
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 max-h-64 overflow-y-auto">
+            <pre className="text-sm text-slate-300 whitespace-pre-wrap break-words font-sans">
+              {version.contenido}
+            </pre>
+          </div>
+
+          {!version.actual && version.fecha_version && (
+            <p className="text-xs text-slate-500 mt-3">
+              Versión archivada: {' '}
+              {new Date(version.fecha_version).toLocaleString('es-MX')}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+{documentoEditando && (
+  <div className="mb-6 bg-slate-900 border border-sky-500/40 rounded-xl p-5">
+    <div className="flex justify-between items-center mb-4">
+      <div>
+        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+          <Pencil className="w-5 h-5 text-sky-400" />
+          Editar documento #{documentoEditando.documento_id}
+        </h3>
+
+        <p className="text-sm text-slate-400 mt-1">
+          {documentoEditando.titulo_plantilla}
+          {' · '}
+          Versión {documentoEditando.version}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => {
+          setDocumentoEditando(null);
+          setContenidoEditado('');
+        }}
+        className="text-slate-400 hover:text-white p-2"
+        title="Cerrar editor"
+      >
+        <X className="w-5 h-5" />
+      </button>
+    </div>
+
+    <label className="block text-sm text-slate-300 mb-2">
+      Contenido del documento
+    </label>
+
+    <textarea
+      value={contenidoEditado}
+      onChange={(e) => setContenidoEditado(e.target.value)}
+      rows={14}
+      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-4 text-slate-100 text-sm leading-relaxed focus:outline-none focus:border-sky-500 resize-y"
+    />
+
+    <div className="flex justify-end gap-3 mt-4">
+      <button
+        type="button"
+        onClick={() => {
+          setDocumentoEditando(null);
+          setContenidoEditado('');
+        }}
+        className="px-4 py-2 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-800"
+      >
+        Cancelar
+      </button>
+
+
+      <button
+        type="button"
+        onClick={guardarEdicionDocumento}
+        disabled={guardandoEdicion || !contenidoEditado.trim()}
+        className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+      >
+        {guardandoEdicion ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Guardando...
+          </>
+        ) : (
+          <>
+            <Save className="w-4 h-4" />
+            Guardar cambios
+          </>
+        )}
+      </button>
+    </div>
+  </div>
+)}
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -474,7 +775,25 @@ function Dashboard({ usuario, onCerrarSesion }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700/50 text-sm">
-                  {documentos.map((doc) => (
+                  {documentosFiltrados.length === 0 && (
+                            <tr>
+                              <td
+                                colSpan={4}
+                                className="py-10 px-4 text-center text-slate-400"
+                              >
+                                <FileText className="w-8 h-8 mx-auto mb-3 text-slate-500" />
+
+                                <p className="font-medium">
+                                  No se encontraron documentos.
+                                </p>
+
+                                <p className="text-xs mt-2 text-slate-500">
+                                  Prueba con otro nombre de empleado o selecciona otra plantilla.
+                                </p>
+                          </td>
+                    </tr>
+                  )}
+                  {documentosFiltrados.map((doc) => (
                     <tr key={doc.documento_id} className="hover:bg-slate-700/20 transition-all">
                       <td className="py-4 px-4 font-mono text-sky-400 font-semibold">#{doc.documento_id}</td>
                       <td className="py-4 px-4 text-slate-200 font-medium">{doc.titulo_plantilla}</td>
@@ -485,6 +804,23 @@ function Dashboard({ usuario, onCerrarSesion }) {
                       </td>
                       <td className="py-4 px-4 text-right">
                         <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => abrirEditorDocumento(doc)}
+                            className="px-2.5 py-1 bg-amber-600/20 text-amber-300 border border-amber-500/30 hover:bg-amber-600/30 rounded-lg text-xs font-semibold transition-all inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => consultarVersionesDocumento(doc)}
+                            disabled={cargandoVersiones}
+                            className="px-2.5 py-1 bg-violet-600/20 text-violet-300 border border-violet-500/30 hover:bg-violet-600/30 rounded-lg text-xs font-semibold transition-all inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          >
+                            <History className="w-3 h-3" />
+                            Versiones
+                          </button>
                           <button
                             onClick={() => descargarArchivo(doc.documento_id, 'pdf')}
                             className="px-2.5 py-1 bg-rose-600/20 text-rose-300 border border-rose-500/30 hover:bg-rose-600/30 rounded-lg text-xs font-semibold transition-all inline-flex items-center gap-1 cursor-pointer"

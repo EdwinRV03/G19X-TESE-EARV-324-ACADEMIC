@@ -124,19 +124,64 @@ cd G19X-TESE-EARV-324-ACADEMIC
 
 ### 10.3. Configurar las variables de entorno
 
-En la carpeta principal del proyecto, crear una copia del archivo `.env.example` y nombrarla `.env`.
+El proyecto utiliza dos archivos de configuración para separar las variables del servicio PostgreSQL y las utilizadas por el backend.
 
-Configurar los valores correspondientes a:
+**Configuración de Docker Compose**
 
-- `GROQ_API_KEY`
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `POSTGRES_DB`
-- `DATABASE_URL`
+En la carpeta principal del proyecto, crear una copia de `.env.example` con el nombre `.env`.
 
-La contraseña establecida en `POSTGRES_PASSWORD` debe coincidir con la contraseña utilizada en `DATABASE_URL`.
+Configurar las variables `POSTGRES_USER`, `POSTGRES_PASSWORD` y `POSTGRES_DB` con los valores correspondientes a PostgreSQL.
 
-Las credenciales reales deben mantenerse exclusivamente en el archivo `.env`, que está excluido del repositorio mediante `.gitignore`.
+**Configuración del backend**
+
+Dentro de la carpeta `backend`, crear una copia de `backend/.env.example` con el nombre `.env`.
+
+Configurar las variables `GROQ_API_KEY` y `DATABASE_URL` para permitir la generación de documentos y la conexión con PostgreSQL.
+
+La contraseña indicada en `DATABASE_URL` debe coincidir con la configurada en `POSTGRES_PASSWORD`. Si contiene caracteres reservados de URL, debe codificarse adecuadamente en la cadena de conexión.
+
+Ambos archivos `.env` contienen información privada y se encuentran excluidos del repositorio mediante `.gitignore`. Los archivos `.env.example` únicamente incluyen valores de referencia para facilitar la configuración del sistema.
+
+La separación permite administrar las configuraciones del contenedor PostgreSQL y del backend de manera independiente durante el desarrollo local.
+
+**Configuración de autenticación JWT**
+
+El backend utiliza JSON Web Tokens (JWT) para autenticar a los usuarios y controlar el acceso a las funcionalidades del sistema.
+
+En el archivo `backend/.env`, configurar las siguientes variables:
+
+```env
+JWT_SECRET_KEY=coloca_aqui_una_clave_aleatoria_segura
+JWT_ALGORITHM=HS256
+JWT_ACCESS_TOKEN_MINUTES=30
+```
+
+Para generar una clave segura, ejecutar desde PowerShell:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Copiar el resultado en `JWT_SECRET_KEY` dentro de `backend/.env`. La clave generada es privada y no debe compartirse ni publicarse en GitHub.
+
+**Configuración del correo electrónico SMTP**
+
+El sistema utiliza SMTP para enviar enlaces de recuperación de contraseñas. En `backend/.env`, configurar:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=correo_de_envio@gmail.com
+SMTP_PASSWORD=contraseña_de_aplicacion
+SMTP_FROM_EMAIL=correo_de_envio@gmail.com
+SMTP_USE_TLS=true
+```
+
+Para utilizar Gmail es necesario habilitar la verificación en dos pasos de la cuenta y generar una contraseña de aplicación, cuando Google permita esta opción.
+
+La contraseña de aplicación se utiliza exclusivamente para autenticar el envío de correos SMTP. No debe confundirse con la contraseña habitual de Gmail.
+
+Las credenciales reales deben almacenarse únicamente en archivos `.env` excluidos de Git. El archivo `backend/.env.example` contiene valores de referencia para facilitar la instalación.
 
 ### 10.4. Iniciar PostgreSQL con Docker
 
@@ -161,19 +206,44 @@ Debe aparecer el contenedor `postgres_legal_db` en ejecución.
 Desde la carpeta principal del proyecto, ejecutar los siguientes comandos en PowerShell:
 
 ```powershell
-cd backend
 py -3.11 -m venv venv
-.\venv\Scripts\python.exe -m pip install -r ..\requirements.txt
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+cd backend
 ```
 
 El archivo `requirements.txt` contiene las dependencias necesarias para FastAPI, PostgreSQL, Groq y la generación de documentos PDF y Word.
+
+**Creación del administrador inicial**
+
+Antes de iniciar sesión por primera vez, es necesario registrar una cuenta de administrador en PostgreSQL.
+
+Con PostgreSQL en ejecución, las tablas de la base de datos creadas y las variables de entorno del backend configuradas, ejecutar desde la carpeta `backend`:
+
+```powershell
+..\venv\Scripts\python.exe crear_admin.py
+```
+
+El programa solicitará los siguientes datos:
+
+- Nombre del administrador.
+- Correo electrónico.
+- Contraseña de al menos ocho caracteres.
+- Confirmación de contraseña.
+
+El script comprueba que el correo no esté registrado, genera un hash seguro de la contraseña mediante Argon2 y crea el usuario con el rol `admin`.
+
+Las contraseñas no se muestran durante su captura ni se almacenan en texto plano.
+
+Una vez creado el administrador, podrá iniciar sesión desde la interfaz web utilizando su correo electrónico y contraseña.
+
+Este procedimiento se realiza únicamente cuando se necesita registrar una cuenta administradora inicial; no debe repetirse durante cada arranque del sistema.
 
 ### 10.6. Ejecutar el backend
 
 Dentro de la carpeta `backend`, ejecutar:
 
 ```powershell
-.\venv\Scripts\python.exe -m uvicorn main:app --reload --port 8001
+..\venv\Scripts\python.exe -m uvicorn main:app --reload --port 8001
 ```
 
 Una vez iniciado el servidor, la documentación interactiva de la API estará disponible en:

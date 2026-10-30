@@ -6,17 +6,33 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
-
 from app.auth import router as auth_router
 from app.auth import obtener_usuario_actual
-from app.database import engine, Base, get_db
-from app.models import Plantilla, DocumentoGenerado, Usuario
+from app.database import engine, Base, get_db, SessionLocal
+from app.models import Plantilla, DocumentoGenerado, Usuario, VersionDocumento
 from app.services_ai import generar_redaccion_legal
+from app.plantillas import plantillas
 from app.services_export import exportar_a_pdf, exportar_a_docx
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Sistema de Notificaciones Legales")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db = SessionLocal()
+    try:
+        plantillas(db)
+    finally:
+        db.close()
+
+    yield
+
+app = FastAPI(
+    title="Sistema de Notificaciones Legales",
+    lifespan=lifespan
+)
+
 app.include_router(auth_router)
 
 app.add_middleware(
@@ -36,54 +52,25 @@ class SolicitudGuardar(BaseModel):
     contenido: str
     datos_variables: Dict[str, Any]
 
+class SolicitudEditarDocumento(BaseModel):
+    contenido: str
+    datos_variables: Optional[Dict[str, Any]] = None
+    version_actual: int
 
 @app.get("/plantillas/", dependencies=[Depends(obtener_usuario_actual)])
 def listar_plantillas(db: Session = Depends(get_db)):
     try:
-        duplicado_antiguo = db.query(Plantilla).filter(Plantilla.titulo == "Notificacion de Rescision Laboral").first()
-        if duplicado_antiguo:
-            db.delete(duplicado_antiguo)
-            db.commit()
+        return (
+            db.query(Plantilla)
+            .order_by(Plantilla.id.asc())
+            .all()
+        )
 
-        plantillas_catalog = [
-            {
-                "titulo": "Notificación de Rescisión Laboral",
-                "cuerpo_base": "[empresa_nombre]\n\nSr.(a) [nombre_empleado]\nPresente.-\n\nPor medio de la presente se le notifica formalmente la rescisión de su contrato laboral con fecha efectiva al [fecha_efectiva], derivado de: [motivo].\n\nAtentamente,\n[firmante_nombre]\n[firmante_cargo]"
-            },
-            {
-                "titulo": "Acta Administrativa por Incumplimiento",
-                "cuerpo_base": "[empresa_nombre]\n\nACTA ADMINISTRATIVA DE HECHOS\n\nEn la ciudad de Ecatepec, Estado de México, con fecha [fecha_efectiva], se levanta la presente Acta Administrativa al empleado(a) [nombre_empleado].\n\nHECHOS:\nSe deja constancia del incumplimiento relativo a: [motivo].\n\nEl presente documento se integra a su expediente laboral para los efectos legales a que haya lugar.\n\nAtentamente,\n[firmante_nombre]\n[firmante_cargo]"
-            },
-            {
-                "titulo": "Carta de Recomendación Laboral",
-                "cuerpo_base": "[empresa_nombre]\n\nA QUIEN CORRESPONDA:\n\nPor medio de la presente hago constar que el(la) C. [nombre_empleado] laboró en esta institución con fecha de término al [fecha_efectiva], desempeñando sus actividades con responsabilidad y profesionalismo.\n\nEl motivo de conclusión de la relación laboral fue: [motivo].\n\nSe extiende la presente para los fines que al interesado convengan.\n\nAtentamente,\n[firmante_nombre]\n[firmante_cargo]"
-            },
-            {
-                "titulo": "Convenio de Confidencialidad (NDA)",
-                "cuerpo_base": "[empresa_nombre]\n\nACUERDO DE CONFIDENCIALIDAD Y NO DIVULGACIÓN\n\nEntre [empresa_nombre] y el(la) C. [nombre_empleado], con fecha efectiva al [fecha_efectiva].\n\nOBJETO Y ALCANCE:\nEl receptor se compromete a mantener estricta confidencialidad respecto a la información técnica, comercial y operativa recibida, en particular sobre: [motivo].\n\nAtentamente,\n[firmante_nombre]\n[firmante_cargo]"
-            },
-            {
-                "titulo": "Aviso de Suspensión Temporal de Labores",
-                "cuerpo_base": "[empresa_nombre]\n\nSr.(a) [nombre_empleado]\nPresente.-\n\nPor medio del presente comunicado se le informa la suspensión temporal de sus actividades laborales con fecha efectiva al [fecha_efectiva].\n\nDicha medida responde a: [motivo].\n\nAtentamente,\n[firmante_nombre]\n[firmante_cargo]"
-            }
-        ]
-
-        for p_data in plantillas_catalog:
-            existe = db.query(Plantilla).filter(Plantilla.titulo == p_data["titulo"]).first()
-            if not existe:
-                nueva_plantilla = Plantilla(
-                    titulo=p_data["titulo"],
-                    cuerpo_base=p_data["cuerpo_base"]
-                )
-                db.add(nueva_plantilla)
-
-        db.commit()
-        return db.query(Plantilla).order_by(Plantilla.id.asc()).all()
-
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error al listar plantillas: {str(e)}")
-
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="No fue posible consultar las plantillas."
+        )
 
 @app.post("/documentos/redactar-borrador/", dependencies=[Depends(obtener_usuario_actual)])
 def redactar_borrador(solicitud: SolicitudBorrador, db: Session = Depends(get_db)):
@@ -96,7 +83,6 @@ def redactar_borrador(solicitud: SolicitudBorrador, db: Session = Depends(get_db
         return {"status": "borrador_generado", "contenido_generado": contenido}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al generar borrador con IA: {str(e)}")
-
 
 
 @app.post("/documentos/guardar/")
@@ -117,6 +103,7 @@ def guardar_documento(
 
     doc = DocumentoGenerado(
         plantilla_id=plantilla.id,
+        datos_variables=solicitud.datos_variables,
         usuario_id=usuario_actual.id,
         contenido=solicitud.contenido,
         estado="confirmado"
@@ -132,7 +119,140 @@ def guardar_documento(
         "titulo_plantilla": plantilla.titulo
     }
 
+@app.put("/documentos/{documento_id}/editar")
+def editar_documento(
+    documento_id: int,
+    solicitud: SolicitudEditarDocumento,
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+    db: Session = Depends(get_db)
+):
+    if not solicitud.contenido.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="El contenido del documento no puede estar vacío."
+        )
 
+    try:
+        documento = (
+            db.query(DocumentoGenerado)
+            .filter(DocumentoGenerado.id == documento_id)
+            .with_for_update()
+            .first()
+        )
+
+        if documento is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Documento no encontrado."
+            )
+
+        if (
+            usuario_actual.rol != "admin"
+            and documento.usuario_id != usuario_actual.id
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="No tienes permiso para editar este documento."
+            )
+
+        if documento.version != solicitud.version_actual:
+            raise HTTPException(
+                status_code=409,
+                detail="El documento fue modificado. Actualiza el historial antes de editar."
+            )
+
+        version_anterior = VersionDocumento(
+            documento_id=documento.id,
+            version=documento.version,
+            contenido=documento.contenido,
+            datos_variables=documento.datos_variables
+        )
+
+        db.add(version_anterior)
+
+        documento.contenido = solicitud.contenido
+
+        if solicitud.datos_variables is not None:
+            documento.datos_variables = solicitud.datos_variables
+
+        documento.version += 1
+
+        db.commit()
+        db.refresh(documento)
+
+        return {
+            "mensaje": "Documento actualizado correctamente.",
+            "documento_id": documento.id,
+            "version": documento.version
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="No fue posible actualizar el documento."
+        )
+
+@app.get("/documentos/{documento_id}/versiones")
+def consultar_versiones_documento(
+    documento_id: int,
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+    db: Session = Depends(get_db)
+):
+    documento = (
+        db.query(DocumentoGenerado)
+        .filter(DocumentoGenerado.id == documento_id)
+        .first()
+    )
+
+    if documento is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Documento no encontrado."
+        )
+
+    if (
+        usuario_actual.rol != "admin"
+        and documento.usuario_id != usuario_actual.id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="No tienes permiso para consultar este documento."
+        )
+
+    versiones = (
+        db.query(VersionDocumento)
+        .filter(VersionDocumento.documento_id == documento_id)
+        .order_by(VersionDocumento.version.asc())
+        .all()
+    )
+
+    resultado = [
+        {
+            "version": v.version,
+            "contenido": v.contenido,
+            "datos_variables": v.datos_variables,
+            "fecha_version": v.fecha_version
+        }
+        for v in versiones
+    ]
+
+    resultado.append({
+        "version": documento.version,
+        "contenido": documento.contenido,
+        "datos_variables": documento.datos_variables,
+        "fecha_version": documento.fecha_creacion,
+        "actual": True
+    })
+
+    return {
+        "documento_id": documento.id,
+        "versiones": resultado
+    }
 
 @app.get("/documentos/")
 def listar_documentos(
@@ -159,7 +279,8 @@ def listar_documentos(
             "titulo_plantilla": d.plantilla.titulo if d.plantilla else "Carta Legal",
             "estado": d.estado,
             "version": d.version,
-            "contenido": d.contenido
+            "contenido": d.contenido,
+            "datos_variables": d.datos_variables
         })
 
     return resultado
