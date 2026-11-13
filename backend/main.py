@@ -1,3 +1,4 @@
+import os
 import base64
 import logging
 import traceback
@@ -15,7 +16,8 @@ from app.services_ai import generar_redaccion_legal
 from app.plantillas import plantillas
 from app.services_export import exportar_a_pdf, exportar_a_docx
 
-Base.metadata.create_all(bind=engine)
+if os.getenv("TESTING") != "1":
+    Base.metadata.create_all(bind=engine)
 
 from contextlib import asynccontextmanager
 

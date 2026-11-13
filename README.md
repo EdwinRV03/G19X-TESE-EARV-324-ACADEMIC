@@ -326,6 +326,28 @@ Los documentos generados mediante inteligencia artificial deben revisarse antes 
 
 La generación automatizada de documentos no sustituye la revisión de un profesional del derecho.
 
+## 12.1 Pruebas automatizadas
+
+El backend cuenta con tres pruebas automatizadas desarrolladas con `pytest` y `TestClient` de FastAPI.
+
+Las pruebas comprueban:
+
+- **401 Unauthorized:** se rechaza una solicitud de edición sin token.
+- **403 Forbidden:** un usuario normal no puede editar un documento que pertenece a otra persona.
+- **409 Conflict:** se rechaza una edición cuando se utiliza una versión desactualizada.
+
+Las pruebas utilizan SQLite en memoria y usuarios y documentos ficticios para no modificar la información almacenada en PostgreSQL.
+
+Para ejecutarlas, abre una terminal desde la carpeta `backend`, activa el entorno virtual del proyecto y utiliza:
+
+```powershell
+python -m pytest tests/test_documentos.py -v
+```
+
+**Resultado obtenido:** 3 pruebas aprobadas, 0 fallidas y 2 advertencias de dependencias.
+
+Estas comprobaciones respaldan las validaciones de autenticación, permisos y control de versiones, pero no sustituyen una evaluación integral de seguridad.
+
 ## 13. Estado del proyecto
 
 El proyecto cuenta con un sistema funcional de generación, edición, almacenamiento, consulta y exportación de documentos mediante una aplicación web.
