@@ -1,32 +1,60 @@
-﻿# -*- coding: utf-8 -*-
-from app.database import engine, Base, SessionLocal
-from app.models import Plantilla, DocumentoGenerado
 from sqlalchemy import text
-
-print("1. Eliminando tablas antiguas en cascada...")
-with engine.connect() as conn:
-    conn.execute(text("DROP TABLE IF EXISTS documentos_generados, documentos, plantillas CASCADE;"))
-    conn.commit()
-
-print("2. Recreando estructura de tablas en PostgreSQL...")
-Base.metadata.create_all(bind=engine)
-
-print("3. Insertando plantilla base...")
-db = SessionLocal()
-plantilla_defecto = Plantilla(
-    titulo="Notificacion de Rescision Laboral",
-    cuerpo_base=(
-        "[empresa_nombre]\n\n"
-        "Sr.(a) [nombre_empleado]\n"
-        "Presente.-\n\n"
-        "Por medio de la presente se le notifica formalmente la rescision de su "
-        "contrato laboral con fecha efectiva al [fecha_efectiva], derivado de: [motivo].\n\n"
-        "Atentamente,\n"
-        "[firmante_nombre]\n"
-        "[firmante_cargo]"
-    )
+from app.database import engine, Base, SessionLocal
+from app.models import (
+    Plantilla,
+    DocumentoGenerado,
+    Usuario,
+    TokenRecuperacion,
+    VersionDocumento,
 )
-db.add(plantilla_defecto)
-db.commit()
+from app.plantillas import plantillas
 
-print("Base de datos reseteada y lista con exito!")
+
+def resetear_base_datos():
+    print("ADVERTENCIA: Esta operación eliminará datos de la base de datos.")
+    print("Se borrarán documentos, versiones, usuarios y plantillas.")
+
+    confirmacion = input(
+        "Escribe RESETEAR para confirmar: "
+    ).strip()
+
+    if confirmacion != "RESETEAR":
+        print("Operación cancelada.")
+        return
+
+    print("1. Eliminando tablas antiguas...")
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+            DROP TABLE IF EXISTS
+                versiones_documentos,
+                tokens_recuperacion,
+                documentos_generados,
+                documentos,
+                usuarios,
+                plantillas
+            CASCADE;
+        """))
+
+    print("2. Recreando tablas...")
+
+    Base.metadata.create_all(bind=engine)
+
+    print("3. Registrando las cinco plantillas...")
+
+    db = SessionLocal()
+
+    try:
+        plantillas(db)
+        print("Base de datos reiniciada correctamente.")
+
+    except Exception:
+        db.rollback()
+        print("Error al registrar las plantillas.")
+        raise
+
+    finally:
+        db.close()
+
+if __name__ == "__main__":
+    resetear_base_datos()
