@@ -283,14 +283,40 @@ Los documentos generados mediante inteligencia artificial deben revisarse antes 
 
 ## 11. Flujo de funcionamiento
 
-1. El usuario accede a la interfaz principal del sistema.
+1. El usuario accede al sistema e inicia sesión con su correo electrónico y contraseña.
 2. Selecciona una de las cinco plantillas disponibles.
-3. Introduce los datos de la empresa, el destinatario y la información del documento.
-4. Solicita la generación del borrador asistido por inteligencia artificial.
+3. Introduce los datos de la empresa, el destinatario y la información necesaria para elaborar el documento.
+4. Solicita la generación de un borrador asistido por inteligencia artificial.
 5. Revisa y modifica el contenido generado.
-6. Guarda el documento en PostgreSQL.
-7. Consulta los documentos almacenados desde el historial.
-8. Exporta los documentos en PDF o Word.
+6. Guarda el documento en PostgreSQL junto con los datos utilizados para su elaboración.
+7. Consulta sus documentos guardados desde el historial.
+8. Puede buscar documentos por nombre del empleado o filtrarlos por plantilla.
+9. Si necesita modificar un documento guardado, puede editarlo y conservar su versión anterior.
+10. Consulta el historial de versiones para revisar el contenido de las modificaciones realizadas.
+11. Descarga los documentos en formato PDF o Word.
+
+El sistema utiliza roles de administrador y usuario para controlar las funciones disponibles y restringir el acceso a la información documental.
+
+## 11.1 Permisos de usuario
+
+El sistema cuenta con dos roles: administrador (`admin`) y usuario (`usuario`). Ambos pueden elaborar y gestionar documentos, pero las funciones administrativas están reservadas al administrador.
+
+| Funcionalidad | Administrador (`admin`) | Usuario (`usuario`) |
+|---|---|---|
+| Iniciar sesión | Sí | Sí |
+| Generar y guardar documentos | Sí | Sí |
+| Consultar el historial | Sí | Sí, sus propios documentos |
+| Editar documentos guardados | Sí | Sí, sus propios documentos |
+| Consultar versiones anteriores | Sí | Sí, de sus documentos |
+| Buscar y filtrar documentos | Sí | Sí |
+| Descargar PDF y Word | Sí | Sí, de sus documentos |
+| Consultar y modificar su cuenta | Sí | Sí |
+| Crear y administrar usuarios | Sí | No |
+| Activar o desactivar cuentas | Sí | No |
+
+El administrador puede gestionar las cuentas registradas y realizar las operaciones autorizadas por el backend. El usuario normal únicamente puede acceder a los documentos que le corresponden.
+
+Los permisos se comprueban en el backend, por lo que no dependen solamente de los botones visibles en la interfaz.
 
 ## 12. Consideraciones de seguridad
 
@@ -302,9 +328,15 @@ La generación automatizada de documentos no sustituye la revisión de un profes
 
 ## 13. Estado del proyecto
 
-El proyecto cuenta con un flujo funcional de generación, edición, almacenamiento, consulta y exportación de documentos.
+El proyecto cuenta con un sistema funcional de generación, edición, almacenamiento, consulta y exportación de documentos mediante una aplicación web.
 
-Actualmente se trabaja en la organización del repositorio y la elaboración de su documentación técnica.
+Actualmente incorpora autenticación de usuarios, administración de cuentas, control de acceso por roles y recuperación de contraseñas.
+
+También permite editar documentos previamente guardados, conservar versiones anteriores, consultar el historial de modificaciones y buscar documentos por nombre del empleado o tipo de plantilla.
+
+La información se almacena en PostgreSQL y el sistema utiliza Groq API para generar borradores asistidos por inteligencia artificial.
+
+La aplicación funciona en un entorno de desarrollo local. Aunque sus principales funcionalidades han sido comprobadas, todavía se requieren pruebas automatizadas, verificaciones adicionales de seguridad y una revisión final de las exportaciones PDF y Word antes de considerar su utilización en producción.
 
 ## 14. Contexto empresarial del proyecto
 
