@@ -1,4 +1,5 @@
 import base64
+import logging
 import traceback
 from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +18,8 @@ from app.services_export import exportar_a_pdf, exportar_a_docx
 Base.metadata.create_all(bind=engine)
 
 from contextlib import asynccontextmanager
+
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -81,8 +84,12 @@ def redactar_borrador(solicitud: SolicitudBorrador, db: Session = Depends(get_db
     try:
         contenido = generar_redaccion_legal(plantilla.cuerpo_base, solicitud.datos_variables)
         return {"status": "borrador_generado", "contenido_generado": contenido}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al generar borrador con IA: {str(e)}")
+    except Exception:
+        logger.exception("Error al generar el borrador con IA")
+        raise HTTPException(
+            status_code=500,
+            detail="No fue posible generar el borrador. Intenta nuevamente."
+        )
 
 
 @app.post("/documentos/guardar/")
@@ -313,10 +320,12 @@ async def exportar_pdf_con_logo(
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename=notificacion_{documento_id}.pdf"}
         )
-    except Exception as e:
-        print("=== ERROR AL GENERAR PDF ===")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error interno PDF: {str(e)}")
+    except Exception:
+        logger.exception("Error al generar el documento PDF")
+        raise HTTPException(
+            status_code=500,
+            detail="No fue posible generar el archivo PDF. Intenta nuevamente."
+        )
 
 
 @app.post("/documentos/{documento_id}/exportar/docx")
@@ -346,7 +355,9 @@ async def exportar_docx_con_logo(
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             headers={"Content-Disposition": f"attachment; filename=notificacion_{documento_id}.docx"}
         )
-    except Exception as e:
-        print("=== ERROR AL GENERAR DOCX ===")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error interno DOCX: {str(e)}")
+    except Exception:
+        logger.exception("Error al generar el documento Word")
+        raise HTTPException(
+            status_code=500,
+            detail="No fue posible generar el archivo Word. Intenta nuevamente."
+        )
