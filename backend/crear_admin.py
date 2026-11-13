@@ -1,12 +1,11 @@
-
 from getpass import getpass
-
-from app.database import SessionLocal
+from app.database import SessionLocal, Base, engine
 from app.models import Usuario
 from app.security import generar_hash_password
 
 
 def crear_administrador():
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
     try:
